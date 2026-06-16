@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ParkSpot - Multi-Vehicle CSP Reservation Terminal</title>
+    <style>
+        :root {
+            --bg-canvas: #f8fafc;
+            --parkspot-green: #10b981;
+            --parkspot-dark: #0f172a;
+            --win-border: #cbd5e1;
+            --card-hover: #f1f5f9;
+            --text-muted: #64748b;
+            
+            /* Amenities & Sizes Matrix mapping */
+            --color-ev: #059669;
+            --color-security: #2563eb;
+            --color-vip: #d97706;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        
+        body { 
+            background-color: var(--bg-canvas); 
+            color: var(--parkspot-dark); 
+            overflow: hidden; 
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* ParkSpot Main Consumer Navigation Header Bar */
+        .app-navbar {
+            background: #ffffff;
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--win-border);
+            z-index: 9999;
+            position: relative;
+        }
+        .logo-area { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.3rem; color: var(--parkspot-green); }
+        .logo-area span { color: var(--parkspot-dark); }
+        
+        .nav-window-links { display: flex; gap: 10px; }
+        .nav-btn {
+            background: #fff; color: var(--parkspot-dark); border: 1px solid var(--win-border);
+            padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 0.85rem; font-weight: 600;
+            transition: all 0.2s;
+        }
+        .nav-btn.active { border-color: var(--parkspot-green); color: var(--parkspot-green); background: #ecfdf5; }
+
+        /* Window Space */
+        .desktop-canvas {
+            position: relative;
+            width: 100%;
+            height: calc(100vh - 65px);
+            padding: 15px;
+        }
+
+        /* Modern Draggable Windows */
+        .app-window {
+            position: absolute;
+            background: #ffffff;
+            border: 1px solid var(--win-border);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px -10px rgba(15,23,42,0.15);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 10;
+        }
+        .app-window:focus-within { border-color: var(--parkspot-green); box-shadow: 0 10px 30px -5px rgba(16,185,129,0.2); }
+
+        .window-header {
+            background: #f1f5f9;
+            padding: 12px 18px;
+            cursor: move;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+            font-size: 0.85rem;
+            font-weight: 700;
+            border-bottom: 1px solid var(--win-border);
+        }
+        .win-dot { width: 12px; height: 12px; border-radius: 50%; cursor: pointer; background: #cbd5e1; }
+        .window-body { padding: 20px; flex-grow: 1; overflow-y: auto; height: calc(100% - 45px); }
+
+        /* Explicit Layout Locations */
+        #winSearch { width: 440px; height: 560px; top: 20px; left: 20px; }
+        #winEngine { width: 500px; height: 420px; top: 20px; left: 480px; }
+        #winReceipt { width: 460px; height: 480px; top: 120px; left: 1000px; }
+
+        /* Form Custom Controls */
+        .search-tab-row { display: flex; background: #f1f5f9; border-radius: 8px; padding: 4px; margin-bottom: 16px; }
+        .tab-item { flex: 1; text-align: center; padding: 8px; font-size: 0.8rem; font-weight: bold; cursor: pointer; border-radius: 6px; }
+        .tab-item.active { background: #fff; color: var(--parkspot-green); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+
+        .form-group { margin-bottom: 14px; }
+        label { display: block; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); margin-bottom: 5px; text-transform: uppercase; }
+        select, input {
+            width: 100%; padding: 10px 14px; background: #fff; border: 1px solid var(--win-border);
+            color: var(--parkspot-dark); border-radius: 8px; font-size: 0.9rem; outline: none; transition: all 0.2s;
+        }
+        select:focus, input:focus { border-color: var(--parkspot-green); }
+
+        .amenities-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+        .check-card {
+            border: 1px solid var(--win-border); padding: 10px; border-radius: 8px; display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; font-weight: 600;
+        }
+        .check-card input { width: auto; }
+
+        button.action-btn {
+            width: 100%; padding: 14px; background: var(--parkspot-green); color: white; border: none;
+            border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 0.9rem; transition: all 0.2s;
+        }
+        button.action-btn:hover { background: #059669; transform: translateY(-1px); }
+
+        /* Market Lot Space View Card Nodes */
+        .spot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 12px; margin-top: 10px; }
+        .spot-card {
+            border: 1px solid var(--win-border); border-radius: 8px; padding: 10px; font-size: 0.75rem;
+            display: flex; flex-direction: column; justify-content: space-between; min-height: 95px; background: #fff;
+            position: relative;
+        }
+        .spot-card.allocated { background: #f0fdf4; border-color: var(--parkspot-green); }
+        .spot-card-id { font-weight: 700; font-size: 0.9rem; margin-bottom: 4px; }
+        .occupant-id { font-size: 0.7rem; color: var(--parkspot-green); font-weight: bold; margin-top: 2px; }
+
+        .feature-badge { font-size: 0.6rem; padding: 1px 4px; border-radius: 3px; font-weight: bold; display: inline-block; color: #fff; background: #64748b; margin-right: 2px; }
+        .feature-badge.ev { background: var(--color-ev); }
+        .feature-badge.vip { background: var(--color-vip); }
+
+        /* Engine Terminal Diagnostics Box */
+        .terminal-box {
+            background: #0f172a; border-radius: 8px; padding: 15px; height: 100%; overflow-y: auto;
+            color: #e2e8f0; font-family: 'Consolas', monospace; font-size: 0.75rem; line-height: 1.4;
+        }
+        .term-line { margin-bottom: 5px; border-left: 2px solid #475569; padding-left: 6px; }
+        .term-line.success { border-color: var(--parkspot-green); color: #34d399; }
+        .term-line.fail { border-color: #ef4444; color: #f87171; }
+
+        /* Checkout Slip Ticket UI Component */
+        .ticket-receipt {
+            border: 2px dashed var(--win-border); border-radius: 8px; padding: 20px; background: #fafafa;
+        }
+        .receipt-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.85rem; }
+        .receipt-total { border-top: 2px dashed var(--win-border); padding-top: 10px; font-weight: 700; font-size: 1.1rem; color: var(--parkspot-green); }
+        
+        .checkout-actions { display: flex; gap: 8px; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+    <div class="app-navbar">
+        <div class="logo-area">🅿️ ParkSpot<span>.Engine</span></div>
+        <div class="nav-window-links">
+            <button class="nav-btn active" id="btnSearch" onclick="toggleWindow('winSearch')">Find Spots</button>
+            <button class="nav-btn active" id="btnEngine" onclick="toggleWindow('winEngine')">CSP Constraint Trace</button>
+            <button class="nav-btn active" id="btnReceipt" onclick="toggleWindow('winReceipt')">Booking Checkout</button>
+        </div>
+        <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-muted);">Multi-Vehicle Portal Session</div>
+    </div>
+
+    <div class="desktop-canvas" id="canvasSpace">
+
+        <div class="app-window" id="winSearch">
+            <div class="window-header" onmousedown="dragStart(event, 'winSearch')">
+                <span>📍 Find a Parking Spot</span>
+                <div class="win-dot" onclick="toggleWindow('winSearch')"></div>
+            </div>
+            <div class="window-body">
+                <div class="search-tab-row">
+                    <div class="tab-item active">Hourly Booking</div>
+                    <div class="tab-item">Monthly Subscription</div>
+                </div>
+
+                <div class="form-group">
+                    <label>Destination Location Zone</label>
+                    <select id="loc_zone">
+                        <option value="Downtown">Downtown Core Central</option>
+                        <option value="Airport">Terminal Flight Gates Area</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Vehicle Dimension Classification</label>
+                    <select id="v_size">
+                        <option value="S">Compact (Hatchback/Two-Wheeler)</option>
+                        <option value="M" selected>Medium (Standard Sedan/SUV)</option>
+                        <option value="L">Large (Commercial Van/Truck)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>User Profile Privilege</label>
+                    <select id="v_priority">
+                        <option value="Regular">Standard Public Fleet</option>
+                        <option value="VIP">Premium Member (VIP Spots Open)</option>
+                    </select>
+                </div>
+
+                <label>Filter Special Amenities Needed</label>
+                <div class="amenities-group">
+                    <div class="check-card"><input type="checkbox" id="need_ev"> <span>⚡ EV Station</span></div>
+                    <div class="check-card"><input type="checkbox" id="need_security"> <span>🛡️ Safe Vault Guarded</span></div>
+                </div>
+
+                <button class="action-btn" onclick="executeParkSpotCsp()">Search &amp; Reserve Spot</button>
+
+                <div style="margin-top: 15px; border-top: 1px solid var(--win-border); padding-top: 10px;">
+                    <label>Live Garage Spaces Status Map</label>
+                    <div class="spot-grid" id="spotLayoutView"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="app-window" id="winEngine">
+            <div class="window-header" onmousedown="dragStart(event, 'winEngine')">
+                <span>⚙️ ParkSpot Backend Constraint Evaluator</span>
+                <div class="win-dot" onclick="toggleWindow('winEngine')"></div>
+            </div>
+            <div class="window-body" style="background: #0f172a; padding: 5px;">
+                <div class="terminal-box" id="engineOutputLog">
+                    <div class="term-line">CSP Matrix online. Multiple token assignments enabled.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="app-window" id="winReceipt">
+            <div class="window-header" onmousedown="dragStart(event, 'winReceipt')">
+                <span>💳 Dynamic Booking Bill Checkout</span>
+                <div class="win-dot" onclick="toggleWindow('winReceipt')"></div>
+            </div>
+            <div class="window-body">
+                <div id="receiptPlaceholder" style="text-align: center; color: var(--text-muted); padding: 40px 10px;">
+                    <span style="font-size: 2.5rem;">🛒</span>
+                    <p style="margin-top: 10px; font-weight: 600;">No active checkout session in view.</p>
+                    <p style="font-size: 0.75rem;">Complete a new search request to generate a bill.</p>
+                </div>
+                <div id="receiptTicket" class="ticket-receipt" style="display: none;">
+                    <div style="text-align:center; margin-bottom:15px;">
+                        <h3 style="text-transform:uppercase; color:var(--parkspot-green);">Booking Confirmed!</h3>
+                        <p style="font-size:0.7rem; color:var(--text-muted);" id="rec_time"></p>
+                    </div>
+                    <div class="receipt-row"><span>Assigned Spot Token:</span><strong id="rec_id"></strong></div>
+                    <div class="receipt-row"><span>Garage Base Tier Rating:</span><span id="rec_size"></span></div>
+                    <div class="receipt-row"><span>Entrance Distance Metric:</span><span id="rec_dist"></span></div>
+                    <div class="receipt-row"><span>Amenities Included:</span><span id="rec_amenities" style="color:var(--parkspot-green); font-weight:bold;"></span></div>
+                    <div class="receipt-row receipt-total"><span>Hourly Rate Fee:</span><span id="rec_price"></span></div>
+                    
+                    <div class="checkout-actions">
+                        <button class="action-btn" style="background:#0f172a; font-size:0.8rem;" id="btnCancelSpecific">Release This Spot</button>
+                        <button class="action-btn" style="background:#334155; font-size:0.8rem;" onclick="clearAllBookings()">Flush Entire Lot</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+<script>
+    // --- APP RUNTIME DRAG AND DROP LOGIC CONFIGURATION ---
+    let activeDragWin = null;
+    let dx = 0, dy = 0;
+
+    function dragStart(e, id) {
+        if(e.target.classList.contains('win-dot') || e.target.tagName === 'BUTTON') return;
+        activeDragWin = document.getElementById(id);
+        document.querySelectorAll('.app-window').forEach(w => w.style.zIndex = "10");
+        activeDragWin.style.zIndex = "100";
+        dx = e.clientX - activeDragWin.offsetLeft;
+        dy = e.clientY - activeDragWin.offsetTop;
+        document.addEventListener('mousemove', dragMove);
+        document.addEventListener('mouseup', dragStop);
+    }
+    function dragMove(e) {
+        if (!activeDragWin) return;
+        activeDragWin.style.left = (e.clientX - dx) + 'px';
+        activeDragWin.style.top = (e.clientY - dy) + 'px';
+    }
+    function dragStop() { activeDragWin = null; document.removeEventListener('mousemove', dragMove); document.removeEventListener('mouseup', dragStop); }
+
+    function toggleWindow(id) {
+        const win = document.getElementById(id);
+        const btn = document.getElementById('btn' + id.substring(3));
+        win.style.display = (win.style.display === 'none') ? 'flex' : 'none';
+        btn.classList.toggle('active');
+    }
+
+    // --- CONSUMER SPOT MATRIX VALUES SPACE ---
+    const SIZE_RANKS = { 'S': 1, 'M': 2, 'L': 3 };
+    let spotInventory = [
+        { id: 'Spot-A1', size: 'S', isVip: false, hasEv: false, hasSec: true,  distance: 6,  cost: 12, bookingOccupant: null },
+        { id: 'Spot-A2', size: 'S', isVip: false, hasEv: true,  hasSec: false, distance: 11, cost: 18, bookingOccupant: null },
+        { id: 'Spot-B1', size: 'M', isVip: true,  hasEv: false, hasSec: true,  distance: 3,  cost: 45, bookingOccupant: null },
+        { id: 'Spot-B2', size: 'M', isVip: false, hasEv: true,  hasSec: true,  distance: 14, cost: 28, bookingOccupant: null },
+        { id: 'Spot-C1', size: 'L', isVip: false, hasEv: false, hasSec: true,  distance: 25, cost: 35, bookingOccupant: null },
+        { id: 'Spot-C2', size: 'L', isVip: true,  hasEv: true,  hasSec: true,  distance: 8,  cost: 75, bookingOccupant: null }
+    ];
+
+    function drawMarketInventory() {
+        const view = document.getElementById('spotLayoutView');
+        view.innerHTML = '';
+        spotInventory.forEach(s => {
+            const el = document.createElement('div');
+            el.className = `spot-card ${s.bookingOccupant ? 'allocated' : ''}`;
+            
+            let badges = '';
+            if(s.isVip) badges += `<span class="feature-badge vip">VIP</span>`;
+            if(s.hasEv) badges += `<span class="feature-badge ev">⚡</span>`;
+
+            let occupantMarkup = s.bookingOccupant ? `<div class="occupant-id">👤 ${s.bookingOccupant.token}</div>` : '';
+
+            el.innerHTML = `
+                <div>
+                    <div class="spot-card-id">${s.id}</div>
+                    <div style="color:var(--text-muted)">Type: ${s.size} | Dist: ${s.distance}m</div>
+                    <div style="margin-top:4px;">${badges}</div>
+                    ${occupantMarkup}
+                </div>
+                <div style="font-weight:700; color:#059669; margin-top:5px;">$${s.cost}/hr</div>
+            `;
+            
+            // Allow clicking a spot to view its checkout statement details
+            if(s.bookingOccupant) {
+                el.style.cursor = 'pointer';
+                el.onclick = () => loadCheckoutTicket(s);
+            }
+            
+            view.appendChild(el);
+        });
+    }
+
+    function logEngine(msg, stateClass = '') {
+        const logBox = document.getElementById('engineOutputLog');
+        const l = document.createElement('div');
+        l.className = `term-line ${stateClass}`;
+        l.innerText = `[CSP MATRIX TRACE] ${msg}`;
+        logBox.appendChild(l);
+        logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    // --- PARKSPOT BACKEND CSP RESERVATION ROUTINE ---
+    function executeParkSpotCsp() {
+        const size = document.getElementById('v_size').value;
+        const priority = document.getElementById('v_priority').value;
+        const needEv = document.getElementById('need_ev').checked;
+        const needSec = document.getElementById('need_security').checked;
+
+        const requestVector = { size, priority, needEv, needSec, token: `CAR-${Math.floor(100 + Math.random()*899)}` };
+
+        logEngine(`Evaluating query ruleset for vehicle identifier: [${requestVector.token}]`);
+
+        // CSP Filtering Chain (Adding absolute constraint checking to skip already filled positions)
+        let validSpaces = spotInventory.filter(spot => {
+            if (spot.bookingOccupant !== null) return false; // Binary Exclusion Rule: Space must be empty
+            if (SIZE_RANKS[requestVector.size] > SIZE_RANKS[spot.size]) return false;
+            if (spot.isVip && requestVector.priority !== 'VIP') return false;
+            if (requestVector.needEv && !spot.hasEv) return false;
+            if (requestVector.needSec && !spot.hasSec) return false;
+            return true;
+        });
+
+        if(validSpaces.length === 0) {
+            logEngine(`Search Failed for ${requestVector.token}: No remaining slots satisfy structural constraints.`, 'fail');
+            return;
+        }
+
+        // Apply Multi-Attribute Optimization Weights Sorting Heuristics
+        validSpaces.sort((a, b) => {
+            let metricA = (a.distance * 0.5) + (a.cost * 0.5);
+            let metricB = (b.distance * 0.5) + (b.cost * 0.5);
+            return metricA - metricB;
+        });
+
+        let optimalChoice = validSpaces[0];
+        optimalChoice.bookingOccupant = requestVector;
+
+        logEngine(`CSP Solution Converged! Assigned ${requestVector.token} to address [${optimalChoice.id}].`, 'success');
+
+        loadCheckoutTicket(optimalChoice);
+        drawMarketInventory();
+    }
+
+    function loadCheckoutTicket(slot) {
+        document.getElementById('receiptPlaceholder').style.display = 'none';
+        document.getElementById('receiptTicket').style.display = 'block';
+        
+        document.getElementById('rec_id').innerText = slot.id;
+        document.getElementById('rec_size').innerText = `${slot.size} Format Slot (Occupant: ${slot.bookingOccupant.token})`;
+        document.getElementById('rec_dist').innerText = `${slot.distance} meters from entrance`;
+        document.getElementById('rec_price').innerText = `$${slot.cost}.00 / hour`;
+        document.getElementById('rec_time').innerText = new Date().toLocaleString();
+        
+        let amens = ['Standard Asphalt'];
+        if(slot.hasEv) amens.push('⚡ Charging Station');
+        if(slot.hasSec) amens.push('🛡️ Secure Camera Guarded');
+        document.getElementById('rec_amenities').innerText = amens.join(' | ');
+
+        // Dynamically bind specific release execution to this precise slot parameter context
+        document.getElementById('btnCancelSpecific').onclick = () => releaseSpecificSpot(slot.id);
+        
+        // Auto focus focus stack layer shifting onto receipt window
+        document.querySelectorAll('.app-window').forEach(w => w.style.zIndex = "10");
+        document.getElementById('winReceipt').style.zIndex = "100";
+    }
+
+    function releaseSpecificSpot(slotId) {
+        let slot = spotInventory.find(s => s.id === slotId);
+        if(slot && slot.bookingOccupant) {
+            logEngine(`Intercept call: Released vehicle ${slot.bookingOccupant.token} from address location [${slotId}].`, 'fail');
+            slot.bookingOccupant = null;
+            document.getElementById('receiptPlaceholder').style.display = 'block';
+            document.getElementById('receiptTicket').style.display = 'none';
+            drawMarketInventory();
+        }
+    }
+
+    function clearAllBookings() {
+        spotInventory.forEach(s => s.bookingOccupant = null);
+        logEngine(`Global Flush Executed: Wiped all assignments back to clear space metrics.`, 'fail');
+        document.getElementById('receiptPlaceholder').style.display = 'block';
+        document.getElementById('receiptTicket').style.display = 'none';
+        drawMarketInventory();
+    }
+
+    // Run layout draw loop initializations
+    drawMarketInventory();
+</script>
+</body>
+</html>
